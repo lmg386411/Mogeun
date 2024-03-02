@@ -1,0 +1,60 @@
+pipeline {
+    environment {
+        docker_repo = "gugaro/hkdream"
+        docker_key = credentials("Docker")
+        docker_image = ''
+    }
+    agent any
+    stages {
+        stage('Build Spring Boot') {
+            steps {
+                sh '''
+                    cd ./backend
+                    chmod 777 ./gradlew
+                    ./gradlew clean bootJar
+                '''
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    cd ./backend
+                    docker build -t ${docker_repo}:back-0.1 .
+                '''
+            }
+        }
+        stage('Deploy Spring Boot Image') {
+            steps {
+                sh '''
+                    docker stop back-server
+                    docker rm back-server
+                    docker run -d --name back-server --restart=always -p 8085:8081 --add-host host.docker.internal:host-gateway --volume /etc/letsencrypt/:/etc/letsencrypt ${docker_repo}:back-0.1
+                '''
+            }
+        }
+    }
+    post {
+        success {
+        	script {
+                def Author_ID = sh(script: "git show -s --pretty=%an", returnStdout: true).trim()
+                def Author_Name = sh(script: "git show -s --pretty=%ae", returnStdout: true).trim()
+                mattermostSend (color: 'good', 
+                message: "빌드 성공: ${env.JOB_NAME} #${env.BUILD_NUMBER} by ${Author_ID}(${Author_Name})\n(<${env.BUILD_URL}|Details>)", 
+                endpoint: 'https://meeting.ssafy.com/hooks/ii4u9h3fzff9tpqmndkh7hwq7w',
+                channel: 'C104-Jenkins'
+                )
+            }
+        }
+        failure {
+        	script {
+                def Author_ID = sh(script: "git show -s --pretty=%an", returnStdout: true).trim()
+                def Author_Name = sh(script: "git show -s --pretty=%ae", returnStdout: true).trim()
+                mattermostSend (color: 'danger', 
+                message: "빌드 실패: ${env.JOB_NAME} #${env.BUILD_NUMBER} by ${Author_ID}(${Author_Name})\n(<${env.BUILD_URL}|Details>)", 
+                endpoint: 'https://meeting.ssafy.com/hooks/ii4u9h3fzff9tpqmndkh7hwq7w',
+                channel: 'C104-Jenkins'
+                )
+            }
+        }
+    }
+}
